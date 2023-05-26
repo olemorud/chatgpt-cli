@@ -32,7 +32,11 @@ func main() {
 	args := flag.Args()
 
 	if len(args) == 0 {
-		runInteractive(token, model)
+		err = runInteractive(token, model)
+
+		if err != nil {
+			fmt.Println(err)
+		}
 	} else {
 		query := strings.Join(args, " ")
 		err = askGpt(token, model, query)
@@ -76,8 +80,9 @@ func runInteractive(token string, model string) error {
 
 	fmt.Println("ChatGPT", model, "interactive mode")
 
+	fmt.Println("->")
+
 	for scanner.Scan() {
-		fmt.Println("->")
 
 		text := scanner.Text()
 
@@ -94,11 +99,13 @@ func runInteractive(token string, model string) error {
 			},
 		)
 
-		fmt.Println(resp.Choices[0].Message.Content)
-
 		if err != nil {
 			return err
 		}
+
+		fmt.Println(resp.Choices[0].Message.Content)
+
+		fmt.Println("->")
 	}
 
 	if err := scanner.Err(); err != nil {
