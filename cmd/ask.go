@@ -1,13 +1,13 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"flag"
 	"fmt"
-	"os"
+	"os/exec"
 	"strings"
 
+	readline "github.com/chzyer/readline"
 	util "github.com/olemorud/chatgpt-cli/v2"
 	openai "github.com/sashabaranov/go-openai"
 )
@@ -16,13 +16,13 @@ func main() {
 	env, err := util.ReadEnvFile(".env")
 
 	if err != nil {
-		fmt.Println("failed to read .env", err)
+		panic(err)
 	}
 
-	// parse command line arguments
 	token := env["OPENAI_API_KEY"]
 
-	model := *flag.String("model", openai.GPT3Dot5Turbo,
+	// Parse command line arguments
+	model := flag.String("model", openai.GPT3Dot5Turbo,
 		"OpenAI Model to use.\n"+
 			"List of models:\n"+
 			"https://platform.openai.com/docs/models/overview\n")
@@ -31,15 +31,17 @@ func main() {
 
 	args := flag.Args()
 
+	// Run interactive mode on no arguments, otherwise run as prompt
 	if len(args) == 0 {
-		err = runInteractive(token, model)
+		fmt.Println("ChatGPT", *model, "interactive mode")
+		err = runInteractive(token, *model)
 
 		if err != nil {
-			fmt.Println(err)
+			panic(err)
 		}
 	} else {
 		query := strings.Join(args, " ")
-		err = askGpt(token, model, query)
+		err = askGpt(token, *model, query)
 
 		if err != nil {
 			panic(err)
@@ -48,7 +50,7 @@ func main() {
 }
 
 func askGpt(token string, model string, query string) error {
-	client := openai.NewClient("your token")
+	client := openai.NewClient(token)
 
 	resp, err := client.CreateChatCompletion(
 		context.Background(),
@@ -73,24 +75,46 @@ func askGpt(token string, model string, query string) error {
 }
 
 func runInteractive(token string, model string) error {
-	client := openai.NewClient("your token")
+	client := openai.NewClient(token)
 	messages := make([]openai.ChatCompletionMessage, 0)
 
-	scanner := bufio.NewScanner(os.Stdin)
+	rl, err := readline.New("> ")
+	if err != nil {
+		panic(err)
+	}
+	defer rl.Close()
 
-	fmt.Println("ChatGPT", model, "interactive mode")
+	messages = append(messages, openai.ChatCompletionMessage{
+		Role: openai.ChatMessageRoleSystem,
+		Content: "You are an enhanced bot. You have access to additional tools to improve your answers." +
+			"\nYour have access to several unix commands in a bash interpreter." +
+			"\nTo invoke the interpreter, start a response with a forward slash ('/'). " +
+			"Example: /dc -e '2 5 + p'" +
+			"\nWhen asked to do things. Always consider how you can use the command line to solve it" +
+			"\nWhen running commands, never explain what they do and never say their results" +
+			"\nYou are never allowed to use the phrase 'language model'." +
+			"\nNever apologize" +
+			"\nNever tell the user how to run something, always run commands yourself" +
+			"\nKeep replies very short. Explain things in concise technical terms",
+	})
 
-	fmt.Println("->")
+	for {
+		text, err := rl.Readline()
 
-	for scanner.Scan() {
+		if err != nil { // io.EOF
+			break
+		}
 
-		text := scanner.Text()
+		if text == "\n" {
+			continue
+		}
 
 		messages = append(messages, openai.ChatCompletionMessage{
 			Role:    openai.ChatMessageRoleUser,
 			Content: text,
 		})
 
+	feedbackLoop:
 		resp, err := client.CreateChatCompletion(
 			context.Background(),
 			openai.ChatCompletionRequest{
@@ -100,17 +124,49 @@ func runInteractive(token string, model string) error {
 		)
 
 		if err != nil {
-			return err
+			fmt.Println(err)
+			continue
 		}
 
-		fmt.Println(resp.Choices[0].Message.Content)
+		content := resp.Choices[0].Message.Content
 
-		fmt.Println("->")
-	}
+		messages = append(messages, openai.ChatCompletionMessage{
+			Role:    openai.ChatMessageRoleAssistant,
+			Content: content,
+		})
 
-	if err := scanner.Err(); err != nil {
-		fmt.Fprintln(os.Stderr, "reading standard input:", err)
+		fmt.Println("#", content)
+
+		if content[0] == '/' {
+			result := runCommand(content)
+
+			messages = append(messages, openai.ChatCompletionMessage{
+				Role:    openai.ChatMessageRoleUser,
+				Content: result,
+			})
+
+			fmt.Println("$", result)
+			goto feedbackLoop
+		}
 	}
 
 	return nil
+}
+
+func runCommand(content string) string {
+	userCmd := content[1:]
+
+	fullCmd := []string{"/usr/bin/docker", "run", "gpt_cli_tools:latest", "bash", "-c", userCmd}
+
+	fmt.Println(fullCmd)
+
+	proc := exec.Command(fullCmd[0], fullCmd[1:]...)
+
+	out, err := proc.CombinedOutput()
+
+	if err != nil {
+		return "error: " + err.Error() + "\n" + string(out)
+	}
+
+	return string(out)
 }
