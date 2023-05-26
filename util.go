@@ -38,7 +38,12 @@ func ReadEnvFile(path string) (map[string]string, error) {
 	return output, nil
 }
 
-// Creates a new chat session id and saves it to a file
-func NewChat(path string) {
+func Contains[T comparable](haystack []T, needle T) bool {
+	for _, v := range haystack {
+		if v == needle {
+			return true
+		}
+	}
 
+	return false
 }
