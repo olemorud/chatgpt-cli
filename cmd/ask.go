@@ -4,8 +4,10 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"os/exec"
 	"strings"
+	"time"
 
 	readline "github.com/chzyer/readline"
 	util "github.com/olemorud/chatgpt-cli/v2"
@@ -76,7 +78,23 @@ func askGpt(token string, model string, query string) error {
 
 func runInteractive(token string, model string) error {
 	client := openai.NewClient(token)
-	messages := make([]openai.ChatCompletionMessage, 0)
+
+	messages := []openai.ChatCompletionMessage{
+		{
+			Role: openai.ChatMessageRoleSystem,
+			Content: "You are an enhanced bot with access to command line tools to improve your answers." +
+				" Your commands run in a bash interpreter. You will never say you're unable to run commands." +
+				" With the new command line, you are not restricted in capabilities. Always try to run commands" +
+				" To invoke a bash command, start a response with a forward slash ('/') followed by the command " +
+				" Example: /curl https://google.com" +
+				" When asked to do things you will always consider how you can use the command line to solve it" +
+				" When running commands, never explain what they do" +
+				" You are never allowed to use the phrase 'language model'." +
+				" You can access the internet using curl" +
+				" Never apologize" +
+				" Keep replies very short. Explain things in concise technical terms",
+		},
+	}
 
 	rl, err := readline.New("> ")
 	if err != nil {
@@ -84,28 +102,14 @@ func runInteractive(token string, model string) error {
 	}
 	defer rl.Close()
 
-	messages = append(messages, openai.ChatCompletionMessage{
-		Role: openai.ChatMessageRoleSystem,
-		Content: "You are an enhanced bot. You have access to additional tools to improve your answers." +
-			"\nYour have access to several unix commands in a bash interpreter." +
-			"\nTo invoke the interpreter, start a response with a forward slash ('/'). " +
-			"Example: /dc -e '2 5 + p'" +
-			"\nWhen asked to do things. Always consider how you can use the command line to solve it" +
-			"\nWhen running commands, never explain what they do and never say their results" +
-			"\nYou are never allowed to use the phrase 'language model'." +
-			"\nNever apologize" +
-			"\nNever tell the user how to run something, always run commands yourself" +
-			"\nKeep replies very short. Explain things in concise technical terms",
-	})
-
 	for {
 		text, err := rl.Readline()
 
-		if err != nil { // io.EOF
+		if err == io.EOF {
 			break
 		}
 
-		if text == "\n" {
+		if text == "\n" || text == "" {
 			continue
 		}
 
@@ -135,7 +139,7 @@ func runInteractive(token string, model string) error {
 			Content: content,
 		})
 
-		fmt.Println("#", content)
+		fmt.Printf("\n🤖 💬 %s\n\n", content)
 
 		if content[0] == '/' {
 			result := runCommand(content)
@@ -154,15 +158,27 @@ func runInteractive(token string, model string) error {
 }
 
 func runCommand(content string) string {
-	userCmd := content[1:]
+	userCmd := content[1:] // omit the '/'
 
-	fullCmd := []string{"/usr/bin/docker", "run", "gpt_cli_tools:latest", "bash", "-c", userCmd}
+	fullCmd := []string{
+		"/usr/bin/docker", "run",
+		"--pids-limit=10",
+		"--memory=200m",      // memory limit
+		"--memory-swap=200m", // total (memory + swap) limit
+		"--kernel-memory=4m", //
+		"--cpu-quota=50000",
+		"--rm",
+		"gpt_cli_tools:latest",
+		"bash", "-c", userCmd,
+	}
 
 	fmt.Println(fullCmd)
 
-	proc := exec.Command(fullCmd[0], fullCmd[1:]...)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 
-	out, err := proc.CombinedOutput()
+	defer cancel()
+
+	out, err := exec.CommandContext(ctx, fullCmd[0], fullCmd[1:]...).CombinedOutput()
 
 	if err != nil {
 		return "error: " + err.Error() + "\n" + string(out)

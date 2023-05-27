@@ -46,3 +46,12 @@ $ 3
 
 # Yes, there are 3 words in the sentence "hello dear world!"
 ```
+
+gpt-4 can do intricate tasks
+```
+ChatGPT gpt-4 interactive mode
+> use pip to install yfinance and use that to get the latest S&P 500 data for the past 10 years
+
+🤖 💬 /pip install yfinance
+/python3 -c 'import yfinance as yf; import datetime; ticker = "^GSPC"; start_date = (datetime.datetime.now() - datetime.timedelta(days=3650)).strftime("%Y-%m-%d"); end_date = datetime.datetime.now().strftime("%Y-%m-%d"); data = yf.download(ticker, start_date, end_date); print(data.head())'
+```
