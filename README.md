@@ -13,6 +13,14 @@ go build cmd/ask.go
 
 ## Example usage
 
+### Run single query
+
+```sh
+ $ ./ask write a python array of 10 nouns
+
+nouns = ["apple", "cat", "book", "car", "tree", "house", "pen", "computer", "phone", "water"]
+```
+
 ### Run (Interactive mode)
 
 With gpt-3.5-turbo (default)
@@ -37,12 +45,4 @@ ChatGPT gpt-4 interactive mode
 $ 3
 
 # Yes, there are 3 words in the sentence "hello dear world!"
-```
-
-## Run single query
-
-```sh
- $ ./ask write a python array of 10 nouns
-
-nouns = ["apple", "cat", "book", "car", "tree", "house", "pen", "computer", "phone", "water"]
 ```
