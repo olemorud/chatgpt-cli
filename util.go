@@ -7,12 +7,11 @@ import (
 	"strings"
 )
 
-func ReadEnvFile(path string) (map[string]string, error) {
+func LoadEnvFile(path string) error {
 	f, err := os.Open(path)
 
 	if err != nil {
-		fmt.Println("failed to open file: ", err)
-		return nil, fmt.Errorf("failed to open file: %v", err)
+		return fmt.Errorf("failed to open file: %v", err)
 	}
 
 	defer f.Close()
@@ -32,10 +31,12 @@ func ReadEnvFile(path string) (map[string]string, error) {
 		key := line[0]
 		val := line[1]
 
+		os.Setenv(key, val)
+
 		output[key] = val
 	}
 
-	return output, nil
+	return nil
 }
 
 func Contains[T comparable](haystack []T, needle T) bool {
